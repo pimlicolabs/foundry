@@ -1483,7 +1483,8 @@ impl NodeConfig {
         cfg.disable_eip3607 = true;
         cfg.disable_block_gas_limit = self.disable_block_gas_limit;
 
-        if !self.enable_tx_gas_limit {
+        // Amsterdam keeps the cap: gas above it is the EIP-8037 state gas reservoir.
+        if !self.enable_tx_gas_limit && cfg.spec < SpecId::AMSTERDAM {
             cfg.tx_gas_limit_cap = Some(u64::MAX);
         }
 

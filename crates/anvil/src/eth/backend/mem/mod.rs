@@ -1876,10 +1876,8 @@ impl<N: Network> Backend<N> {
         let blob_params = self.blob_params();
         PoolTxGasConfig {
             disable_block_gas_limit: evm_env.cfg_env.disable_block_gas_limit,
-            enforced_tx_gas_limit_cap: evm_env
-                .cfg_env
-                .tx_gas_limit_cap
-                .is_none()
+            enforced_tx_gas_limit_cap: (evm_env.cfg_env.tx_gas_limit_cap.is_none()
+                && spec_id < SpecId::AMSTERDAM)
                 .then(|| self.tx_gas_limit_cap(evm_env)),
             max_blob_gas_per_block: blob_params.max_blob_gas_per_block(),
             is_cancun,
@@ -3189,7 +3187,8 @@ impl<N: Network> Backend<N> {
     ///  - the base fee is zero and its check disabled for a zero-fee call, while a priced call must
     ///    pay at least the base fee
     ///  - the blob base fee is zero for a blob call without a blob fee cap
-    ///  - `tx_gas_limit_cap` is set to `Some(u64::MAX)` indicating no gas limit cap
+    ///  - `tx_gas_limit_cap` is set to `Some(u64::MAX)` indicating no gas limit cap, before
+    ///    Amsterdam
     ///  - `nonce` check is skipped
     fn build_call_env_with_base(
         &self,
@@ -3236,7 +3235,9 @@ impl<N: Network> Backend<N> {
         // we want to disable this in eth_call, since this is common practice used by other node
         // impls and providers <https://github.com/foundry-rs/foundry/issues/4388>
         evm_env.cfg_env.disable_block_gas_limit = true;
-        evm_env.cfg_env.tx_gas_limit_cap = Some(u64::MAX);
+        if evm_env.cfg_env.spec < SpecId::AMSTERDAM {
+            evm_env.cfg_env.tx_gas_limit_cap = Some(u64::MAX);
+        }
 
         // Disable nonce check in revm
         evm_env.cfg_env.disable_nonce_check = true;
@@ -5405,7 +5406,7 @@ impl<N: Network> Backend<N> {
         staged_cfg.limit_contract_code_size = staged_config.code_size_limit;
         staged_cfg.disable_eip3607 = true;
         staged_cfg.disable_block_gas_limit = staged_config.disable_block_gas_limit;
-        if !staged_config.enable_tx_gas_limit {
+        if !staged_config.enable_tx_gas_limit && staged_cfg.spec < SpecId::AMSTERDAM {
             staged_cfg.tx_gas_limit_cap = Some(u64::MAX);
         }
         if let Some(memory_limit) = staged_config.memory_limit {
@@ -10184,8 +10185,9 @@ where
                 }));
             }
 
-            // Check tx gas limit against tx gas limit cap (Osaka hard fork and later).
+            // Check tx gas limit against tx gas limit cap (Osaka hard fork until Amsterdam).
             if evm_env.cfg_env.tx_gas_limit_cap.is_none()
+                && evm_env.cfg_env.spec < SpecId::AMSTERDAM
                 && tx.gas_limit() > self.tx_gas_limit_cap(evm_env)
             {
                 debug!(target: "backend", "[{:?}] gas too high", tx.hash());
